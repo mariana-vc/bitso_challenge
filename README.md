@@ -18,16 +18,10 @@ cluster in order to build the environment for the challenge. The functions of ea
 - User: airflow
 - Password: airflow
 
-The airflow scheduler needs to add some fields to the 
-postgres and the api connections, this has to be done manually due issues
-with the airflow CLI.
+##### Sign in Airflow with:
+You will find 2 DAGs
+- exchanges_processing: for the challenge 1 (“Markets team” needs to track and monitor the activity from all the exchanges that offer the same markets as bitso). 
+- spread_monitor: for the challenge 2 (“Markets team” needs to monitor and alert whenever the bid-ask spread from the “order books” in the books btc_mxn and usd_mxn is bigger than 0.1% in Bitso)
 
-##### postgres connection
-- Conn Type: Postgres
-- Password: airflow
-
-##### pronostico_api connection
-- Conn Type: HTTP
-
-After setting up the conections, activate the DAG and
+After sign in, activate the DAGs and
 wait for the process to complete.
