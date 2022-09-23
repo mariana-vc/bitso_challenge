@@ -1,15 +1,11 @@
-import airflow
 from airflow import DAG
 from airflow.operators.python_operator import PythonOperator
 from airflow.operators.dummy_operator import DummyOperator
 from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
-from airflow.sensors.s3_key_sensor import S3KeySensor
-
-import boto3
+#from airflow.sensors.s3_key_sensor import S3KeySensor
+#import boto3
 import requests
-import psycopg2
-import logging
 from datetime import datetime
 from pandas import json_normalize
 
@@ -17,6 +13,7 @@ timest = datetime.now()
 
 s3_buckname = ''
 s3_locat = ''
+
 
 def _get_bitso_spread(book):
     url = "https://api.bitso.com/v3/order_book/?book={0}".format(book)
@@ -50,6 +47,7 @@ def _store_spread():
     hook.copy_expert(sql="COPY spreads FROM stdin WITH DELIMITER as ','",
                      filename=_get_directory('btc_mxn'))
 
+
 def _above_spread(**kwargs):
     s3 = boto3.client('s3')
     obj = s3.get_object(Bucket=s3_buckname, Key=s3_locat)
@@ -70,8 +68,8 @@ with DAG(
 
     store_spread = PythonOperator(task_id='store_spread',
                                   python_callable=_store_spread)
-
-    s3_sensor = S3KeySensor(task_id='s3_file_check',
+    
+    '''s3_sensor = S3KeySensor(task_id='s3_file_check',
                             poke_interval=60,
                             timeout=180,
                             soft_fail=False,
@@ -79,11 +77,11 @@ with DAG(
                             bucket_key=s3_locat,
                             bucket_name=s3_buckname,
                             aws_conn_id='bitso_conn'
-                            )
+                            )'''
 
-    above_spread = PythonOperator(
-        task_id='above_spread',
-        python_callable=_above_spread
-        )
+    s3_sensor = DummyOperator(task_id='s3_sensor')
+
+    above_spread = PythonOperator(task_id='above_spread',
+                                  python_callable=_above_spread)
 
     get_bitso_spread >> store_spread >> s3_sensor >> above_spread
