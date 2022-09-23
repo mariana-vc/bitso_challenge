@@ -42,7 +42,8 @@ RUN pip install --upgrade "pip==20.2.4" && \
     useradd -ms /bin/bash -d ${AIRFLOW_HOME} airflow && \
     pip install apache-airflow==${AIRFLOW_VERSION} --constraint https://raw.githubusercontent.com/apache/airflow/constraints-2.1.4/constraints-3.7.txt && \
     pip install apache-airflow-providers-postgres==2.3.0 && \
-    pip install apache-airflow-providers-http==2.0.1
+    pip install apache-airflow-backport-providers-amazon==2021.3.3 && \
+    pip install apache-airflow-providers-http==2.0.1 
 # Copy the airflow.cfg file (config)
 #COPY ./config/airflow.cfg ${AIRFLOW_HOME}/airflow.cfg
 

@@ -106,7 +106,6 @@ def store_exchange(exchanges):
     """
     conn = connect(param_dic)
     cursor = conn.cursor()
-
     insert_query = "insert into exchanges VALUES(%(id)s, %(name)s, %(trust_score)s, %(trust_score_rank)s)"
     cursor.execute(insert_query, exchanges)
     conn.commit()
@@ -143,7 +142,7 @@ def _get_volume(ti):
     for e in exchanges:
         url = "https://api.coingecko.com/api/v3/exchanges/{0}/volume_chart".format(e)
         r = requests.get(url, params={'days': 30})
-        logging.info(r.json())
+        
         for x in r.json():
             vols = iter(x)
             for dt, vol in zip(vols, vols):
