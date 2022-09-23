@@ -1,6 +1,5 @@
 # Base Image
 FROM python:3.8-slim
-LABEL maintainer="MarcLamberti"
 
 # Arguments that can be set with docker build
 ARG AIRFLOW_VERSION=2.1.4

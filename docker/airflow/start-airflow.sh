@@ -23,9 +23,9 @@ airflow connections add 'postgres' \
     --conn-password 'airflow' \
     --conn-port '5432'
 
-airflow connections add 'pronostico_api' \
+airflow connections add 'exchange_api' \
     --conn-type 'HTTP' \
-    --conn-host 'https://smn.conagua.gob.mx/'
+    --conn-host 'https://api.coingecko.com/'
     
 
 # Run the web sever in foreground (for docker logs)

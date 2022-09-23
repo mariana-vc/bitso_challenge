@@ -4,18 +4,15 @@ from airflow.providers.http.sensors.http import HttpSensor
 from airflow.operators.http_operator import SimpleHttpOperator
 from airflow.operators.python_operator import PythonOperator
 from airflow.operators.dummy_operator import DummyOperator
-from airflow.operators.bash import BashOperator
 from airflow.providers.postgres.operators.postgres import PostgresOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 
 import json
-import gzip
 import requests
 import psycopg2
 import logging
 from datetime import datetime, timedelta
 from json import loads
-from gzip import decompress
 from requests import get
 from psycopg2 import extras
 
@@ -25,6 +22,7 @@ param_dic = {
     "user"      : "airflow",
     "password"  : "airflow"
 }
+
 
 def connect(params_dic):
     """ Connect to the PostgreSQL database server """
@@ -39,146 +37,108 @@ def connect(params_dic):
     logging.info("Connection successful")
     return conn
 
-def _store_pronostico(ti):
+def _get_bitso_tickers():
+    url = "https://api.coingecko.com/api/v3/exchanges/bitso/tickers"
+    r = requests.get(url)
+    return [ {'base': t.get('base'), 'target': t.get('target')} for t in r.json()['tickers'] ]
+
+def _get_exchanges():
+    url = "https://api.coingecko.com/api/v3/exchanges"
+    r = requests.get(url)
+    return [e for e in r.json()]
+
+def _get_exchanges_tickers(ti):
+    bitso_tickers = ti.xcom_pull(task_ids="get_bitso_tickers")
+    exchanges = ti.xcom_pull(task_ids="get_exchanges")
+    valid_exchanges = []
+    for e in exchanges:
+        url = "https://api.coingecko.com/api/v3/exchanges/{0}/tickers".format(e.get('id'))
+        r = requests.get(url)
+
+        try:
+            json_object = json.dumps(r.json())
+        except ValueError as err:
+            logging.info(e.get('id') + ' json failed to fetch.')
+            continue
+
+        tickers_ = [ {'base': t.get('base'), 'target': t.get('target')} for t in r.json()['tickers'] ]
+        
+        set_a = {tuple(dict_.items()) for dict_ in tickers_}
+        set_b = {tuple(dict_.items()) for dict_ in bitso_tickers}
+        match_tickers = set_a.intersection(set_b)
+
+        if match_tickers:
+            logging.info('This exchange will be stored: ' + e.get('id'))
+            valid_exchanges.append(e.get('id'))
+            store_exchange(e)
+            store_tickers(e.get('id'), list(match_tickers))
+        else:
+            logging.info('the exchange ' + e.get('id') + ' has not similar markets as bitso')
+    return valid_exchanges
+
+def store_exchange(e):
     conn = connect(param_dic)
     cursor = conn.cursor()
 
-    pronostico = ti.xcom_pull(task_ids="extract_pronostico")
-    for pronostico_fact in pronostico:
-        insert_query = "insert into pronosticoxmunicipios_" + timest.strftime("%m_%d_%Y_%H") + " VALUES(%(ides)s, %(idmun)s, %(nes)s, %(nmun)s, %(hloc)s, %(dsem)s, %(nhor)s, %(temp)s, %(desciel)s, %(probprec)s, %(prec)s, %(velvien)s, %(dirvienc)s, %(dirvieng)s, %(hr)s, %(lat)s, %(lon)s, %(dpt)s, %(dh)s, %(raf)s, '" + timest.strftime("%m/%d/%Y, %H:%M:%S") + "')"
-        cursor.execute(insert_query, pronostico_fact)
+    insert_query = "insert into exchanges VALUES(%(id)s, %(name)s, %(trust_score)s, %(trust_score_rank)s)"
+    cursor.execute(insert_query, e)
+    conn.commit()
+    conn.close()
+
+def store_tickers(exchange, tickers):
+    conn = connect(param_dic)
+    cursor = conn.cursor()
+    for tup in tickers:
+        insert_query = "insert into exchange_market VALUES('{0}','{1}','{2}')".format(exchange,tup[0][1],tup[1][1])
+        cursor.execute(insert_query)
         conn.commit()
     conn.close()
 
-def extract_json():
-    logging.info("Decompressing .gz file")
-    return loads(decompress(get("https://smn.conagua.gob.mx/webservices/?method=3", verify=False).content))
-
-def _get_average_pronostico():
+def _get_volume(ti):
+    exchanges = ti.xcom_pull(task_ids="get_exchanges_tickers")
     conn = connect(param_dic)
     cursor = conn.cursor()
-    select_query = ""
-    if bool(cursor.execute("SELECT EXISTS(SELECT * FROM information_schema.tables WHERE table_name='"+ (timest - timedelta(hours=1)).strftime("%m_%d_%Y_%H") +"')")):
-        logging.info('Previous hr table exists. Moving On.')
-        select_query = '''SELECT id_es, id_mun, avg(temp) as avg_temp , avg(prec) as avg_prec INTO pronostico_avg_''' + timest.strftime("%m_%d_%Y_%H") + ''' FROM ( 
-                SELECT id_es, id_mun, temp, prec 
-                FROM pronosticoxmunicipios_09_12_2022_18 
-                UNION ALL  
-                SELECT id_es, id_mun, temp , prec
-                FROM pronosticoxmunicipios_09_12_2022_19 ) sub
-            GROUP BY id_es, id_mun;'''
-    else:
-        logging.info('Previous hr does not exist. Creating the Table now.')
-        select_query = "SELECT id_es, id_mun, avg(temp) as avg_temp , avg(prec) as avg_prec INTO pronostico_avg_" + timest.strftime("%m_%d_%Y_%H") + " FROM pronosticoxmunicipios_" + timest.strftime("%m_%d_%Y_%H") + " GROUP BY id_es, id_mun;"
+    
+    for e in exchanges:
+        url = "https://api.coingecko.com/api/v3/exchanges/{0}/volume_chart".format(e)
+        r = requests.get(url, params={'days':30})
+        logging.info(r.json())
+        for x in r.json():
+            vols = iter(x)
+            for dt,vol in zip(vols,vols):
+                insert_query = "insert into exchanges_all VALUES('{0}','{1}',{2})".format(e,datetime.fromtimestamp(dt/1000).strftime('%Y-%m-%d'),vol)
+                cursor.execute(insert_query)
+                conn.commit()
+
     conn.close()
-    logging.info(select_query)
-    return select_query
 
-def csvToPostgres():
-    #Open Postgres Connection
-    pg_hook = PostgresHook(postgres_conn_id='postgres')
-    get_postgres_conn = PostgresHook(postgres_conn_id='postgres').get_conn()
-    curr = get_postgres_conn.cursor("cursor")
-    # CSV loading to table.
-    with open('/opt/airflow/data_municipios/20220503/data.csv', 'r') as f:
-        next(f)
-        curr.copy_from(f, 'data_municipios_20220503', sep=',')
-        get_postgres_conn.commit()
- 
-with DAG('pronostico_processing', start_date=datetime(2022, 9, 9), 
-        schedule_interval='@hourly', catchup=False) as dag:
-
-    timest = datetime.now()
- 
-    create_table = PostgresOperator(
-        task_id='create_table',
+with DAG('exchanges_processing', start_date=datetime(2022, 9, 22), 
+        schedule_interval='@daily', catchup=False) as dag:
+    
+    truncate_tables = PostgresOperator(
+        task_id='truncate_tables',
         postgres_conn_id='postgres',
-        sql='''
-            CREATE TABLE IF NOT EXISTS pronosticoxmunicipios_''' + timest.strftime("%m_%d_%Y_%H") +  ''' (
-                id_es INT NOT NULL,
-                id_mun INT NOT NULL,
-                nom_es TEXT NOT NULL,
-                nom_mun TEXT NOT NULL,
-                h_loc TEXT NOT NULL,
-                d_sem TEXT NOT NULL,
-                nhor INT NOT NULL, 
-                temp FLOAT NOT NULL,
-                desc_ciel TEXT NOT NULL,
-                prob_prec FLOAT NOT NULL,
-                prec FLOAT NOT NULL,
-                vel_vien FLOAT NOT NULL,
-                dir_vien_c TEXT NOT NULL,
-                dir_vien_g FLOAT NOT NULL,
-                hum_rel FLOAT NOT NULL,
-                lat FLOAT NOT NULL,
-                lon FLOAT NOT NULL,
-                dpt FLOAT NOT NULL,
-                dh INT NOT NULL,
-                raf FLOAT NOT NULL,
-                tms TEXT NOT NULL
-            );
-        '''
+        sql=[' TRUNCATE exchanges; ', ' TRUNCATE exchange_market; ', ' TRUNCATE exchanges_all; ']
     )
  
-    extract_pronostico = PythonOperator(
-        task_id='extract_pronostico',
-        python_callable=extract_json
-    )
- 
-    store_pronostico = PythonOperator(
-        task_id='store_pronostico',
-        python_callable=_store_pronostico
+    get_bitso_tickers = PythonOperator(
+        task_id='get_bitso_tickers',
+        python_callable=_get_bitso_tickers
     )
 
-    get_average_pronostico = PythonOperator(
-        task_id='get_average_pronostico',
-        python_callable=_get_average_pronostico
+    get_exchanges = PythonOperator(
+        task_id='get_exchanges',
+        python_callable=_get_exchanges
     )
 
-    execute_average_pronostico = PostgresOperator(
-        task_id='execute_average_pronostico',
-        postgres_conn_id='postgres',
-        sql='''
-            {{ ti.xcom_pull(task_ids='get_average_pronostico') }}
-        '''
+    get_exchanges_tickers = PythonOperator(
+        task_id='get_exchanges_tickers',
+        python_callable=_get_exchanges_tickers
     )
 
-    # This operator was created to retrieve the most recent folder from data_municipios
-    get_last_data_municipios = DummyOperator(
-        task_id='get_data_municipios',
-        #bash_command='find ../../opt/airflow/data_municipios ! -path . -type d | sort -nr | head -1',
+    get_volume = PythonOperator(
+        task_id='get_volume',
+        python_callable=_get_volume
     )
 
-    create_data_municipios_table = PostgresOperator(
-        task_id='create_data_municipios_table',
-        postgres_conn_id='postgres',
-        sql='''
-            CREATE TABLE IF NOT EXISTS data_municipios_20220503 ( 
-                id_es INT NOT NULL,
-                id_mun INT NOT NULL,
-                value_ TEXT NOT NULL
-            )
-            '''
-    ) 
-
-    process_data_municipios = PythonOperator(
-        task_id="process_data_municipios",
-        python_callable=csvToPostgres,
-    )
-
-    merge_data_pronostico_mun = PostgresOperator(
-        task_id='merge_data_pronostico_mun',
-        postgres_conn_id='postgres',
-        sql=['''
-            SELECT ides, idmun, avg_temp, avg_prec, value_ INTO data_pronostico_mun_''' + timest.strftime("%m_%d_%Y_%H") + '''
-            FROM (
-                SELECT pm.id_es as ides, pm.id_mun as idmun, avg_temp, avg_prec, value_ FROM pronostico_avg_''' + timest.strftime("%m_%d_%Y_%H") +  ''' pm
-                JOIN data_municipios_20220503 dm ON dm.id_es = pm.id_es AND dm.id_mun = pm.id_mun
-            ) sub
-            ''',
-            ''' TRUNCATE data_pronostico_mun_current; ''',
-            ''' INSERT INTO data_pronostico_mun_current SELECT * FROM data_pronostico_mun_''' + timest.strftime("%m_%d_%Y_%H") + ''';'''
-            ]
-    )
-
-    create_table >> extract_pronostico >> store_pronostico >> get_average_pronostico >> execute_average_pronostico >> get_last_data_municipios >> create_data_municipios_table >> process_data_municipios >> merge_data_pronostico_mun
+    truncate_tables >> get_bitso_tickers >> get_exchanges >> get_exchanges_tickers >> get_volume
