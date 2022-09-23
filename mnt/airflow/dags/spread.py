@@ -16,17 +16,22 @@ from json import loads
 from requests import get
 from psycopg2 import extras
 
+
 def _get_bitso_tickers():
     url = "https://api.bitso.com/v3/order_book/?book=btc_mxn"
     r = requests.get(url)
-    return [ {'base': t.get('base'), 'target': t.get('target')} for t in r.json()['tickers'] ]
+    return [{
+        'base': t.get('base'),
+        'target': t.get('target')
+    } for t in r.json()['tickers']]
 
-with DAG('spread_processing', start_date=datetime(2022, 9, 22), 
-        schedule_interval='@daily', catchup=False) as dag:
 
-    get_bitso_tickers = PythonOperator(
-        task_id='get_bitso_tickers',
-        python_callable=_get_bitso_tickers
-    )
+with DAG('spread_processing',
+         start_date=datetime(2022, 9, 22),
+         schedule_interval='@daily',
+         catchup=False) as dag:
 
-    get_bitso_tickers 
+    get_bitso_tickers = PythonOperator(task_id='get_bitso_tickers',
+                                       python_callable=_get_bitso_tickers)
+
+    get_bitso_tickers
