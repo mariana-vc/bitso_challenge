@@ -21,7 +21,7 @@ cluster in order to build the environment for the challenge. The functions of ea
 ##### After sign in...
 You will find 2 DAGs
 - exchanges_processing: for the challenge 1 (“Markets team” needs to track and monitor the activity from all the exchanges that offer the same markets as bitso). 
-- spread_monitor: for the challenge 2 (“Markets team” needs to monitor and alert whenever the bid-ask spread from the “order books” in the books btc_mxn and usd_mxn is bigger than 0.1% in Bitso)
+- spread_processing: for the challenge 2 (“Markets team” needs to monitor and alert whenever the bid-ask spread from the “order books” in the books btc_mxn and usd_mxn is bigger than 0.1% in Bitso)
 
 After sign in, activate the DAGs and
 wait for the process to complete.
