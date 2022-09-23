@@ -16,3 +16,12 @@ CREATE TABLE IF NOT EXISTS exchanges_all (
     date TEXT NOT NULL,
     volume_btc FLOAT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS spreads (
+    orderbook_timestamp TEXT NOT NULL,
+    book TEXT NOT NULL,
+    bid FLOAT NOT NULL,
+    ask FLOAT NOT NULL,
+    spread FLOAT NOT NULL,
+    is_above BOOLEAN NOT NULL
+);

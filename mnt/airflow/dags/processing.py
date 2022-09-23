@@ -1,20 +1,13 @@
 import airflow
 from airflow import DAG
-from airflow.providers.http.sensors.http import HttpSensor
-from airflow.operators.http_operator import SimpleHttpOperator
 from airflow.operators.python_operator import PythonOperator
-from airflow.operators.dummy_operator import DummyOperator
 from airflow.providers.postgres.operators.postgres import PostgresOperator
-from airflow.providers.postgres.hooks.postgres import PostgresHook
 
 import json
 import requests
 import psycopg2
 import logging
-from datetime import datetime, timedelta
-from json import loads
-from requests import get
-from psycopg2 import extras
+from datetime import datetime
 
 param_dic = {
     "host": "postgres",
@@ -38,7 +31,7 @@ def connect(params_dic):
 
 
 def _get_bitso_tickers():
-    """This function call the exchanges api to get the tickers from bitso
+    """This function call the exchanges api to get the markets from bitso
 
     Returns:
         list: contains base and target from all bitso markets
@@ -115,7 +108,7 @@ def store_exchange(exchanges):
     cursor = conn.cursor()
 
     insert_query = "insert into exchanges VALUES(%(id)s, %(name)s, %(trust_score)s, %(trust_score_rank)s)"
-    cursor.execute(insert_query, e)
+    cursor.execute(insert_query, exchanges)
     conn.commit()
     conn.close()
 
