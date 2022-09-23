@@ -141,4 +141,4 @@ with DAG('exchanges_processing', start_date=datetime(2022, 9, 22),
         python_callable=_get_volume
     )
 
-    truncate_tables >> get_bitso_tickers >> get_exchanges >> get_exchanges_tickers >> get_volume
+    truncate_tables >> get_bitso_tickers >> get_exchanges >> get_exchanges_tickers >> get_volume 
